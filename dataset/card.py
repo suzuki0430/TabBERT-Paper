@@ -346,3 +346,12 @@ class TransactionDataset(Dataset):
         encoder_fname = path.join(dirname, f'{self.fname}{self.fextension}.encoder_fit.pkl')
         log.info(f"writing cached encoder fit to {encoder_fname}")
         pickle.dump(self.encoder_fit, open(encoder_fname, "wb"))
+
+
+class FineTuningDataset(TransactionDataset):
+
+    def __getitem__(self, index):
+        # return_data = (torch.tensor(self.data[index], dtype=torch.long), torch.tensor(self.window_label[index], dtype=torch.long))
+        return_data = (torch.tensor(self.data[index], dtype=torch.long), self.window_label[index])
+
+        return return_data

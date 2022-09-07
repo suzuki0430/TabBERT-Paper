@@ -16,6 +16,13 @@ from tqdm.notebook import tqdm
 
 from dataset.vocab import AttrDict
 
+from args import define_main_parser
+from dataset.card import TransactionDataset, FineTuningDataset
+
+from dataset.datacollator import TransDataCollatorForLanguageModeling, FineTuningDataCollatorForLanguageModeling
+
+from misc.utils import random_split_dataset
+
 device = torch.device("cuda")
 scaler = torch.cuda.amp.GradScaler()
 
@@ -25,7 +32,8 @@ MAX_LEN = 320
 
 LR = 2e-5
 WEIGHT_DECAY = 1e-6
-N_EPOCHS = 8
+# N_EPOCHS = 8
+N_EPOCHS = 1
 WARM_UP_RATIO = 0.1
 
 BS = 32
@@ -37,18 +45,17 @@ EXP_NAME = 'baseline'
 def create_folds(data):
     data["kfold"] = -1
     data = data.sample(frac=1, random_state=SEED).reset_index(drop=True)
+    
+    num_bins = int(np.floor(1 + np.log2(len(data))))
+    
+    data.loc[:, "bins"] = pd.cut(
+        data["Is Fraud?"], bins=num_bins, labels=False
+    )
+    kf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    for f, (t_, v_) in enumerate(kf.split(X=data, y=data.bins.values)):
+        data.loc[v_, 'kfold'] = f
+    data = data.drop("bins", axis=1)
 
-    # 不明な処理
-    # num_bins = int(np.floor(1 + np.log2(len(data))))
-    
-    # data.loc[:, "bins"] = pd.cut(
-    #     data["Is Fraud?"], bins=num_bins, labels=False
-    # )
-    # kf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
-    # for f, (t_, v_) in enumerate(kf.split(X=data, y=data.bins.values)):
-    #     data.loc[v_, 'kfold'] = f
-    # data = data.drop("bins", axis=1)
-    
     return data
 
 def set_seed(seed=SEED):
@@ -61,51 +68,6 @@ def set_seed(seed=SEED):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-class CommonDataset(Dataset):
-    
-    def __init__(self, df):
-        self.texts = df["User"].tolist()
-        self.labels = df["Is Fraud?"].tolist()
-
-        for index, value in enumerate(self.labels):
-            if value == "No":
-                self.labels[index] = 0
-            else:
-                self.labels[index] = 1
-
-    def __len__(self):
-        return len(self.texts)
-    
-    def __getitem__(self, item):
-        text = self.texts[item]
-        label = self.labels[item]
-        
-        keys = ["unk_token", "sep_token", "pad_token", "cls_token", "mask_token", "bos_token", "eos_token"]
-        special_tokens = ["[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]", "[BOS]", "[EOS]"]
-        special_field_tag = "SPECIAL"
-        special_tokens_map = {}
-
-        for key, token in zip(keys, special_tokens):
-            token = "%s_%s" % (special_field_tag, token)
-            special_tokens_map[key] = token
-        
-        tok = BertTokenizer(
-            vocab_file="./output_card/vocab.nb", 
-            do_lower_case=False,
-            **AttrDict(special_tokens_map))
-        
-        print(tok)
-        
-        d = {
-            # "input_ids": torch.tensor(tok["input_ids"], dtype=torch.long),
-            # "attention_mask": torch.tensor(tok["attention_mask"], dtype=torch.long),
-            # "token_type_ids": torch.tensor(tok["token_type_ids"], dtype=torch.long),
-            # "label": torch.tensor(label, dtype=torch.double),
-            "label": torch.tensor(label, dtype=torch.int),
-        }
-        
-        return d
-
 class CommonModel(nn.Module):
     
     def __init__(self):
@@ -117,11 +79,14 @@ class CommonModel(nn.Module):
 
     def forward(self, input_ids, attention_mask, token_type_ids):
         outputs = self.model(
-            input_ids=input_ids,
+            input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
         )
-        out, _ = self.lstm(outputs['last_hidden_state'], None)
+        # print("outputs",outputs['last_hidden_state'])
+        # print("outputs",outputs)
+        out, _ = self.lstm(outputs[0], None)
+        # out, _ = self.lstm(outputs['last_hidden_state'], None)
         sequence_output = out[:, -1, :]
         logits = self.regressor(sequence_output)
 
@@ -131,41 +96,99 @@ class CommonModel(nn.Module):
         loss = torch.sqrt(nn.MSELoss(reduction='mean')(logits[:, 0], label))
         return loss
 
-    def validation_loop(valid_loader, model):
-        model.eval()
-        preds = []
-        for d in valid_loader:
-            with torch.no_grad():
-                logits = model(
-                        # d["input_ids"].to(device),
-                        # d["attention_mask"].to(device),
-                        # d["token_type_ids"].to(device)
-                        input_ids=None,
-                        attention_mask=None,
-                        token_type_ids=None,
-                )
-            preds.append(logits[:, 0])
-        y_pred = torch.hstack(preds).cpu().numpy()
-        y_true = valid_loader.dataset.labels
-        mse_loss = mean_squared_error(y_true, y_pred, squared=False)
-        return mse_loss
+def validation_loop(valid_loader, model):
+    model.eval()
+    preds = []
+
+    true = []
+
+    for d in valid_loader:
+        with torch.no_grad():
+            logits = model(
+                d["input_ids"].to(device),
+                attention_mask=None,
+                token_type_ids=None
+            )
+        preds.append(logits[:, 0])
+
+        true.append(d["label"].float().to(device))
+
+    y_pred = torch.hstack(preds).cpu().numpy() # tensor連結してndarrayに変換
+
+    y_true = torch.hstack(true).cpu().numpy()
+    print("y_true",y_true)
+    # y_true = valid_loader.dataset.labels
+    mse_loss = mean_squared_error(y_true, y_pred, squared=False)
+    return mse_loss
+
 
 # def main(): 一旦コメントアウト
-train_df = pd.read_csv("./data/credit_card/card_transaction.v2.csv")
-train_df = create_folds(train_df)
 
-train_index = train_df.query('kfold!=0').index.tolist()
-valid_index = train_df.query('kfold==0').index.tolist()
+# Datasets
+dataset = FineTuningDataset(
+            root="./data/credit_card/",
+            fname="card_transaction.v2",
+            fextension="",
+            vocab_dir="./",
+            nrows=None,
+            user_ids=None,
+            mlm=False,
 
-# set dataset
-train_dataset = CommonDataset(train_df.loc[train_index])
-valid_dataset = CommonDataset(train_df.loc[valid_index])
+            # stride=5,
+            # flatten=False,
+            # return_labels=False,
+            
+            stride=10,
+            flatten=True,
+            return_labels=True,
+            
+            skip_user=False)
 
-train_loader = DataLoader(train_dataset, batch_size=BS,
-                        pin_memory=True, shuffle=True, drop_last=True, num_workers=0)
-valid_loader = DataLoader(valid_dataset, batch_size=BS,
-                        pin_memory=True, shuffle=False, drop_last=False, num_workers=0)
+totalN = len(dataset)
+trainN = int(0.80 * totalN)
+valN = totalN - trainN
 
+assert totalN == trainN + valN
+
+lengths = [trainN, valN, 0]
+train_dataset, eval_dataset, test_dataset = random_split_dataset(dataset, lengths)
+
+# DataCollator
+keys = ["unk_token", "sep_token", "pad_token", "cls_token", "mask_token", "bos_token", "eos_token"]
+special_tokens = ["[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]", "[BOS]", "[EOS]"]
+special_field_tag = "SPECIAL"
+special_tokens_map = {}
+
+for key, token in zip(keys, special_tokens):
+    token = "%s_%s" % (special_field_tag, token)
+    special_tokens_map[key] = token
+
+tok = BertTokenizer(
+    vocab_file="./output_card/vocab.nb", 
+    do_lower_case=False,
+    **AttrDict(special_tokens_map))
+
+# data_collator = TransDataCollatorForLanguageModeling(tokenizer=tok, mlm=False)
+data_collator = FineTuningDataCollatorForLanguageModeling(tokenizer=tok)
+
+# DataLoader
+train_loader = DataLoader(
+                    train_dataset,
+                    collate_fn=data_collator,
+                    batch_size=BS,
+                    pin_memory=True, 
+                    shuffle=True, 
+                    drop_last=True, 
+                    num_workers=0)
+
+valid_loader = DataLoader(
+                    eval_dataset, 
+                    collate_fn=data_collator,
+                    batch_size=BS,
+                    pin_memory=True, 
+                    shuffle=False, 
+                    drop_last=False, 
+                    num_workers=0)
 # set models
 model = CommonModel()
 model.to(device)
@@ -192,27 +215,21 @@ for epoch in range(N_EPOCHS):
     for d in train_loader:
         all_step += 1
         model.train()
-        
+
         if MIXED_PRECISION:
             with torch.cuda.amp.autocast():
                 logits = model(
-                    # d["input_ids"].to(device),
-                    # d["attention_mask"].to(device),
-                    # d["token_type_ids"].to(device)
-                    input_ids=None,
+                    d["input_ids"].to(device),
                     attention_mask=None,
-                    token_type_ids=None,
+                    token_type_ids=None
                 )
                 loss = model.loss_fn(logits, d["label"].float().to(device))
                 loss = loss / ACCUMULATE
         else:
             logits = model(
-                # d["input_ids"].to(device),
-                # d["attention_mask"].to(device),
-                # d["token_type_ids"].to(device)
-                input_ids=None,
+                d["input_ids"].to(device),
                 attention_mask=None,
-                token_type_ids=None,
+                token_type_ids=None
             )
             loss = model.loss_fn(logits, d["label"].float().to(device))
             loss = loss / ACCUMULATE
@@ -237,11 +254,11 @@ for epoch in range(N_EPOCHS):
             if valid_best_loss > valid_loss:  
                 valid_best_loss = valid_loss
 
-            wandb.log({
-                "train_loss": train_iter_loss,
-                "valid_loss": valid_loss,
-                "valid_best_loss": valid_best_loss,
-            })
+            # wandb.log({
+            #     "train_loss": train_iter_loss,
+            #     "valid_loss": valid_loss,
+            #     "valid_best_loss": valid_best_loss,
+            # })
             train_iter_loss = 0
         bar.update(1)
 # wandb.finish()

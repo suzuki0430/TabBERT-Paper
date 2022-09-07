@@ -54,3 +54,27 @@ class TransDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+
+class FineTuningDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
+
+    def __call__(
+            self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]
+    ) -> Dict[str, torch.Tensor]:
+
+        input_ids = []
+        labels = []
+        # print("examples", examples)
+        for example in examples:
+            input_ids.append(example[0])
+            labels.append(example[1])
+            # labels.append(torch.tensor([0]))
+        # print("input_ids",input_ids)
+        # print("labels",labels)
+
+        batch_input_ids = self._tensorize_batch(input_ids)
+        # batch_labels = self._tensorize_batch(labels)
+        batch_labels = torch.tensor(labels)
+        
+        # batch_labels = torch.reshape(batch_labels, [32])
+
+        return {"input_ids": batch_input_ids, "label": batch_labels}
