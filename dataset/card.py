@@ -11,6 +11,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data.dataset import Dataset
 
 from misc.utils import divide_chunks
@@ -237,6 +238,7 @@ class TransactionDataset(Dataset):
 
     def get_csv(self, fname):
         data = pd.read_csv(fname, nrows=self.nrows)
+        data = data.iloc[range(24001), :]
         if self.user_ids:
             log.info(f'Filtering data by user ids list: {self.user_ids}...')
             self.user_ids = map(int, self.user_ids)
@@ -350,8 +352,39 @@ class TransactionDataset(Dataset):
 
 class FineTuningDataset(TransactionDataset):
 
+    # 平坦化のためLabelもWindowごとにまとめる
     def __getitem__(self, index):
-        # return_data = (torch.tensor(self.data[index], dtype=torch.long), torch.tensor(self.window_label[index], dtype=torch.long))
-        return_data = (torch.tensor(self.data[index], dtype=torch.long), self.window_label[index])
+        one_hot_window_label = F.one_hot(torch.tensor(self.window_label[index]), num_classes=2)
+        return_data = (torch.tensor(self.data[index], dtype=torch.long), one_hot_window_label.tolist())
+        # return_data = (torch.tensor(self.data[index], dtype=torch.long), self.window_label[index])
 
         return return_data
+
+    # pre-trainingでset_idが完了している
+    def init_vocab(self):
+        column_names = list(self.trans_table.columns)
+        self.vocab.set_field_keys(column_names)
+
+    # pre-trainingで保存した辞書でtoken2idをおこなう
+    def format_trans(self, trans_lst, column_names):
+        with open('vocab_token2id.bin', 'rb') as p:
+            vocab_dic = pickle.load(p)
+
+        trans_lst = list(divide_chunks(trans_lst, len(self.vocab.field_keys) - 2))  # 2 to ignore isFraud and SPECIAL
+        user_vocab_ids = []
+
+        sep_id = self.vocab.get_id(self.vocab.sep_token, special_token=True)
+
+        for trans in trans_lst:
+            vocab_ids = []
+            for jdx, field in enumerate(trans):
+                vocab_id, _ = vocab_dic[column_names[jdx]][field]
+                vocab_ids.append(vocab_id)
+
+            # TODO : need to handle ncols when sep is not added
+            if self.mlm:  # and self.flatten:  # only add [SEP] for BERT + flatten scenario
+                vocab_ids.append(sep_id)
+
+            user_vocab_ids.append(vocab_ids)
+
+        return user_vocab_ids

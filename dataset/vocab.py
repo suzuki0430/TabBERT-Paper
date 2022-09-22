@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import numpy as np
 
+import pickle
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -52,6 +53,14 @@ class Vocabulary:
             self.id2token[global_id] = [token, field_name, local_id]
         else:
             global_id, local_id = self.token2id[field_name][token]
+
+        # save token2id
+        with open('./vocab_token2id.bin', 'wb') as p:
+            pickle.dump(self.token2id, p)
+
+        # save id2token
+        with open('./vocab_id2token.bin', 'wb') as p:
+            pickle.dump(self.id2token, p)
 
         if return_local:
             return local_id

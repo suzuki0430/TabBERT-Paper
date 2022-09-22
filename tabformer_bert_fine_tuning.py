@@ -1,10 +1,6 @@
-from transformers import BertConfig, BertModel
-import torch.nn as nn
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import StratifiedKFold
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from transformers import BertTokenizer
 import os
 import random
@@ -13,15 +9,11 @@ from sklearn.metrics import mean_squared_error
 from transformers import AdamW
 # import wandb
 from tqdm.notebook import tqdm
-
 from dataset.vocab import AttrDict
-
-from args import define_main_parser
-from dataset.card import TransactionDataset, FineTuningDataset
-
-from dataset.datacollator import TransDataCollatorForLanguageModeling, FineTuningDataCollatorForLanguageModeling
-
+from dataset.card import FineTuningDataset
+from dataset.datacollator import FineTuningDataCollatorForLanguageModeling
 from misc.utils import random_split_dataset
+from models.common import CommonModel
 
 device = torch.device("cuda")
 scaler = torch.cuda.amp.GradScaler()
@@ -52,33 +44,6 @@ def set_seed(seed=SEED):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-class CommonModel(nn.Module):
-    
-    def __init__(self):
-        super(CommonModel, self).__init__()
-        self.config = BertConfig.from_pretrained("./output_card/checkpoint-35000/config.json")
-        self.model = BertModel.from_pretrained("./output_card/checkpoint-35000/pytorch_model.bin", config=self.config)
-        self.lstm = nn.LSTM(self.config.hidden_size, self.config.hidden_size, batch_first=True)
-        self.regressor = nn.Linear(self.config.hidden_size, 1)
-
-    def forward(self, input_ids, attention_mask, token_type_ids):
-        outputs = self.model(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-        )
-
-        out, _ = self.lstm(outputs[0], None)
-        # out, _ = self.lstm(outputs['last_hidden_state'], None)
-        sequence_output = out[:, -1, :]
-        logits = self.regressor(sequence_output)
-
-        return logits
-
-    def loss_fn(self, logits, label):
-        loss = torch.sqrt(nn.MSELoss(reduction='mean')(logits[:, 0], label))
-        return loss
-
 def validation_loop(valid_loader, model):
     model.eval()
     preds = []
@@ -92,7 +57,9 @@ def validation_loop(valid_loader, model):
                 attention_mask=None,
                 token_type_ids=None
             )
-        preds.append(logits[:, 0])
+
+        # preds.append(logits[:, 0])
+        preds.append(logits)
         true.append(d["label"].float().to(device))
     y_pred = torch.hstack(preds).cpu().numpy() # tensor連結してndarrayに変換
     y_true = torch.hstack(true).cpu().numpy()
@@ -174,6 +141,10 @@ def main():
     for name, param in model.lstm.named_parameters():
         param.requires_grad = True
 
+    # activate parameters in only linear network
+    for name, param in model.regressor.named_parameters():
+        param.requires_grad = True
+
     # set optimizer
     optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     max_train_steps = N_EPOCHS * len(train_loader)
@@ -212,6 +183,7 @@ def main():
                     attention_mask=None,
                     token_type_ids=None
                 )
+
                 loss = model.loss_fn(logits, d["label"].float().to(device))
                 loss = loss / ACCUMULATE
 
@@ -243,7 +215,7 @@ def main():
                 train_iter_loss = 0
             bar.update(1)
     # wandb.finish()
-    torch.save(model.state_dict(), "./output_fine_tuning/model.pth")
+    torch.save(model.state_dict(), "./output_fine_tuning/fine_tuning_model.pth")
    
 # if __name__ == "main":
 main()
