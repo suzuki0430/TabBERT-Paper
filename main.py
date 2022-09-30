@@ -9,6 +9,7 @@ from args import define_main_parser
 from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
 
 from dataset.prsa import PRSADataset
+from dataset.action_history import ActionHistoryDataset
 from dataset.card import TransactionDataset
 from models.modules import TabFormerBertLM, TabFormerGPT2
 from misc.utils import random_split_dataset
@@ -33,7 +34,20 @@ def main(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)  # torch.cuda
 
-    if args.data_type == 'card':
+    if args.data_type == 'action_history':
+        dataset = ActionHistoryDataset(root=args.data_root,
+                                     fname=args.data_fname,
+                                     fextension=args.data_extension,
+                                     vocab_dir=args.output_dir,
+                                     nrows=args.nrows,
+                                     user_ids=args.user_ids,
+                                     mlm=args.mlm,
+                                     cached=args.cached,
+                                     stride=args.stride,
+                                     flatten=args.flatten,
+                                     return_labels=False,
+                                     skip_user=args.skip_user)
+    elif args.data_type == 'card':
         dataset = TransactionDataset(root=args.data_root,
                                      fname=args.data_fname,
                                      fextension=args.data_extension,

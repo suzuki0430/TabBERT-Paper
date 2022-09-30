@@ -11,9 +11,11 @@ from transformers import AdamW
 from tqdm.notebook import tqdm
 from dataset.vocab import AttrDict
 from dataset.card import FineTuningDataset
+from dataset.action_history import FineTuningActionHistoryDataset
 from dataset.datacollator import FineTuningDataCollatorForLanguageModeling
 from misc.utils import random_split_dataset
 from models.common import CommonModel
+from args import define_fine_tuning_parser
 
 device = torch.device("cuda")
 scaler = torch.cuda.amp.GradScaler()
@@ -28,7 +30,8 @@ WEIGHT_DECAY = 1e-6
 N_EPOCHS = 1
 WARM_UP_RATIO = 0.1
 
-BS = 32
+# BS = 32
+BS = 1
 ACCUMULATE = 1
 MIXED_PRECISION = False
 
@@ -61,6 +64,8 @@ def validation_loop(valid_loader, model):
         # preds.append(logits[:, 0])
         preds.append(logits)
         true.append(d["label"].float().to(device))
+    print("preds",preds)
+    # print("true",len(true))
     y_pred = torch.hstack(preds).cpu().numpy() # tensor連結してndarrayに変換
     y_true = torch.hstack(true).cpu().numpy()
     
@@ -69,14 +74,18 @@ def validation_loop(valid_loader, model):
     return mse_loss
 
 
-def main():
+def main(args):
     # Datasets
-    dataset = FineTuningDataset(
-                root="./data/credit_card/",
-                # fname="card_transaction.v2",
-                fname="card_transaction.v3",
+
+    if args.data_type == "action_history":
+        dataset = FineTuningActionHistoryDataset(
+                # root="./data/credit_card/",
+                # fname="card_transaction.v3",
+                # vocab_dir="./",
+                root=args.data_root,
+                fname=args.data_fname,
+                vocab_dir=args.output_dir,
                 fextension="",
-                vocab_dir="./",
                 nrows=None,
                 user_ids=None,
                 mlm=True,                
@@ -84,6 +93,24 @@ def main():
                 flatten=True,
                 return_labels=True,
                 skip_user=False)
+
+    
+    elif args.data_type == "card":
+        dataset = FineTuningDataset(
+                    # root="./data/credit_card/",
+                    # fname="card_transaction.v3",
+                    # vocab_dir="./",
+                    root=args.data_root,
+                    fname=args.data_fname,
+                    vocab_dir=args.output_dir,
+                    fextension="",
+                    nrows=None,
+                    user_ids=None,
+                    mlm=True,                
+                    stride=10,
+                    flatten=True,
+                    return_labels=True,
+                    skip_user=False)
 
     totalN = len(dataset)
     trainN = int(0.80 * totalN)
@@ -105,7 +132,7 @@ def main():
         special_tokens_map[key] = token
 
     tok = BertTokenizer(
-        vocab_file="./output_card/vocab.nb", 
+        vocab_file=args.vocab_file, 
         do_lower_case=False,
         **AttrDict(special_tokens_map))
 
@@ -215,7 +242,11 @@ def main():
                 train_iter_loss = 0
             bar.update(1)
     # wandb.finish()
-    torch.save(model.state_dict(), "./output_fine_tuning/fine_tuning_model.pth")
+    torch.save(model.state_dict(), args.output_model_dir)
    
 # if __name__ == "main":
-main()
+
+parser = define_fine_tuning_parser()
+opts = parser.parse_args()
+
+main(opts)
