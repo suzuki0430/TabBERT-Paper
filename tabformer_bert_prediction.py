@@ -23,8 +23,8 @@ column_names = ['User',
 
 # prepare data
 data = pd.read_csv('./data/credit_card/preprocessed/card_transaction.v3.encoded.csv', dtype='Int64')
-# data = torch.tensor(data.iloc[1, :].drop("Is Fraud?").tolist())
-data = data.iloc[1, :].drop("Is Fraud?").tolist()
+single_data = data.iloc[13682, :].drop("Is Fraud?").tolist()
+print("single_data", single_data)
 
 # load token2id
 with open('vocab_token2id.bin', 'rb') as p:
@@ -35,7 +35,7 @@ vocab = Vocabulary(adap_thres)
 sep_id = vocab.get_id(vocab.sep_token, special_token=True)
 
 vocab_ids = []
-for jdx, field in enumerate(data):
+for jdx, field in enumerate(single_data):
     vocab_id, _ = vocab_dic[column_names[jdx]][field]
     vocab_ids.append(vocab_id)
 
@@ -50,6 +50,7 @@ model.eval()
 with torch.no_grad():
   output = model(input_ids.to(device))
   print("output", output)
-  ans = torch.argmax(output, 1)
-  print("ans", ans)
+  pred = torch.argmax(output, 1)
+  print("pred", pred)
+
 
