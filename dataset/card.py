@@ -367,7 +367,7 @@ class FineTuningDataset(TransactionDataset):
 
     # pre-trainingで保存した辞書でtoken2idをおこなう
     def format_trans(self, trans_lst, column_names):
-        with open('vocab_token2id.bin', 'rb') as p:
+        with open('./output_pretraining/credit_card/vocab_token2id.bin', 'rb') as p:
             vocab_dic = pickle.load(p)
 
         trans_lst = list(divide_chunks(trans_lst, len(self.vocab.field_keys) - 2))  # 2 to ignore isFraud and SPECIAL

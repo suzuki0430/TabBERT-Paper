@@ -3,12 +3,14 @@ import torch.nn as nn
 import torch
 
 class CommonModel(nn.Module):
-    def __init__(self):
+    def __init__(self,
+                 pretrained_config='./output_pretraining/action_history/checkpoint-500/config.json',
+                 pretrained_model='./output_pretraining/action_history/checkpoint-500/pytorch_model.bin'):
         super(CommonModel, self).__init__()
         # self.config = BertConfig.from_pretrained("./output_card/checkpoint-35000/config.json")
         # self.model = BertModel.from_pretrained("./output_card/checkpoint-35000/pytorch_model.bin", config=self.config)
-        self.config = BertConfig.from_pretrained("./output_pretraining/action_history/checkpoint-500/config.json")
-        self.model = BertModel.from_pretrained("./output_pretraining/action_history/checkpoint-500/pytorch_model.bin", config=self.config)
+        self.config = BertConfig.from_pretrained(pretrained_config)
+        self.model = BertModel.from_pretrained(pretrained_model, config=self.config)
         self.lstm = nn.LSTM(self.config.hidden_size, self.config.hidden_size, batch_first=True)
         self.regressor = nn.Linear(self.config.hidden_size, 2) # 2クラスで
 

@@ -30,8 +30,7 @@ WEIGHT_DECAY = 1e-6
 N_EPOCHS = 1
 WARM_UP_RATIO = 0.1
 
-# BS = 32
-BS = 1
+BS = 32
 ACCUMULATE = 1
 MIXED_PRECISION = False
 
@@ -64,7 +63,8 @@ def validation_loop(valid_loader, model):
         # preds.append(logits[:, 0])
         preds.append(logits)
         true.append(d["label"].float().to(device))
-    print("preds",preds)
+        
+    # print("preds",a)
     # print("true",len(true))
     y_pred = torch.hstack(preds).cpu().numpy() # tensor連結してndarrayに変換
     y_true = torch.hstack(true).cpu().numpy()
@@ -76,15 +76,11 @@ def validation_loop(valid_loader, model):
 
 def main(args):
     # Datasets
-
     if args.data_type == "action_history":
         dataset = FineTuningActionHistoryDataset(
-                # root="./data/credit_card/",
-                # fname="card_transaction.v3",
-                # vocab_dir="./",
-                root=args.data_root,
-                fname=args.data_fname,
-                vocab_dir=args.output_dir,
+                root="./data/action_history/",
+                fname="call_chat_summary.20220901-20220902",
+                vocab_dir="./output_pretraining/action_history/",
                 fextension="",
                 nrows=None,
                 user_ids=None,
@@ -93,16 +89,11 @@ def main(args):
                 flatten=True,
                 return_labels=True,
                 skip_user=False)
-
-    
     elif args.data_type == "card":
         dataset = FineTuningDataset(
-                    # root="./data/credit_card/",
-                    # fname="card_transaction.v3",
-                    # vocab_dir="./",
-                    root=args.data_root,
-                    fname=args.data_fname,
-                    vocab_dir=args.output_dir,
+                    root="./data/credit_card/",
+                    fname="card_transaction.v3",
+                    vocab_dir="./output_pretraining/credit_card/",
                     fextension="",
                     nrows=None,
                     user_ids=None,
@@ -154,7 +145,8 @@ def main(args):
                         batch_size=BS,
                         pin_memory=True, 
                         shuffle=False, 
-                        drop_last=False, 
+                        # drop_last=False,
+                        drop_last=True, 
                         num_workers=0)
     # set models
     model = CommonModel()

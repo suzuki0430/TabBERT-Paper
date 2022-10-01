@@ -54,13 +54,24 @@ class Vocabulary:
         else:
             global_id, local_id = self.token2id[field_name][token]
 
-        # save token2id
-        with open('./vocab_token2id.bin', 'wb') as p:
-            pickle.dump(self.token2id, p)
 
-        # save id2token
-        with open('./vocab_id2token.bin', 'wb') as p:
-            pickle.dump(self.id2token, p)
+        if self.target_column_name == "Is Fraud?":
+            # save token2id
+            with open('./output_pretraining/credit_card/vocab_token2id.bin', 'wb') as p:
+                pickle.dump(self.token2id, p)
+
+            # save id2token
+            with open('./output_pretraining/credit_card/vocab_id2token.bin', 'wb') as p:
+                pickle.dump(self.id2token, p)
+        
+        else:
+            # save token2id
+            with open('./output_pretraining/action_history/vocab_token2id.bin', 'wb') as p:
+                pickle.dump(self.token2id, p)
+
+            # save id2token
+            with open('./output_pretraining/action_history/vocab_id2token.bin', 'wb') as p:
+                pickle.dump(self.id2token, p)
 
         if return_local:
             return local_id

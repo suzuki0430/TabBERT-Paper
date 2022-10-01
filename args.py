@@ -82,6 +82,7 @@ def define_fine_tuning_parser(parser=None):
     if parser is None:
         parser = argparse.ArgumentParser()
 
+    # action_history
     parser.add_argument("--data_root", type=str,
                         default="./data/action_history/",
                         help='root directory for files')
@@ -104,5 +105,29 @@ def define_fine_tuning_parser(parser=None):
     parser.add_argument("--data_type", type=str,
                         default="action_history", choices=['action_history', 'card', 'prsa'],
                         help='root directory for files')
+
+    # card
+    # parser.add_argument("--data_root", type=str,
+    #                     default="./data/credit_card/",
+    #                     help='root directory for files')
+    # parser.add_argument("--data_fname", type=str,
+    #                     default="card_transaction.v3",
+    #                     help='file name of transaction')
+
+    # parser.add_argument("--output_dir", type=str,
+    #                     default='./output_pretraining/credit_card/',
+    #                     help="path to model dump")
+
+    # parser.add_argument("--vocab_file", type=str,
+    #                     default='./output_pretraining/credit_card/vocab.nb',
+    #                     help="cached vocab file")
+
+    # parser.add_argument("--output_model_dir", type=str,
+    #                     default='./output_fine_tuning/credit_card/fine_tuning_model.pth',
+    #                     help="cached vocab file")
+
+    # parser.add_argument("--data_type", type=str,
+    #                     default="card", choices=['action_history', 'card', 'prsa'],
+    #                     help='root directory for files')
     
     return parser
