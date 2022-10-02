@@ -8,31 +8,31 @@ device = torch.device("cuda")
 
 adap_thres=10 ** 8
 
-column_names = ['User',
-                'Card',
-                'Timestamp',
-                'Amount',
-                'Use Chip',
-                'Merchant Name',
-                'Merchant City',
-                'Merchant State',
-                'Zip',
-                'MCC',
-                'Errors?',
-                'Is Fraud?']
+column_names = ['year',
+                'month',
+                'day',
+                'hour',
+                'company_id',
+                'device',
+                'MA/CRM',
+                'SFA',
+                'URL',
+                'stay_seconds',
+                'day_of_week',
+                #  'revisit',
+                'reaction']
 
 # prepare data
-data = pd.read_csv('./data/credit_card/preprocessed/card_transaction.v3.encoded.csv', dtype='Int64')
-input_data = data.drop("Is Fraud?", axis=1).values.tolist()
-labels = data['Is Fraud?'].values.tolist()
-# print("data", data)
+data = pd.read_csv('./data/action_history/preprocessed/call_chat_summary.20220901-20220902.encoded.csv', dtype='Int64')
+single_data = data.iloc[1, :].drop("reaction").tolist()
+print("single_data", single_data)
 
 # load token2id
-with open('vocab_token2id.bin', 'rb') as p:
+with open('./output_pretraining/action_history/vocab_token2id.bin', 'rb') as p:
     vocab_dic = pickle.load(p)
 
 # transfer data to input_ids
-vocab = Vocabulary(adap_thres)
+vocab = Vocabulary(adap_thres, target_column_name="reaction")
 sep_id = vocab.get_id(vocab.sep_token, special_token=True)
 
 user_vocab_ids = []
@@ -48,7 +48,7 @@ for data in input_data:
 # load model
 model = CommonModel()
 model.to(device)
-model.load_state_dict(torch.load("./output_fine_tuning/fine_tuning_model.pth"))
+model.load_state_dict(torch.load("./output_fine_tuning/action_history/fine_tuning_model.pth"))
 model.eval()
 
 # calculate F1

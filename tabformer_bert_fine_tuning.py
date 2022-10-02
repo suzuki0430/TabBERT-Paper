@@ -79,7 +79,7 @@ def main(args):
     if args.data_type == "action_history":
         dataset = FineTuningActionHistoryDataset(
                 root="./data/action_history/",
-                fname="call_chat_summary.20220901-20220902",
+                fname="call_chat_summary.20220901-20220901", # pretraingのファイルとは別
                 vocab_dir="./output_pretraining/action_history/",
                 fextension="",
                 nrows=None,
