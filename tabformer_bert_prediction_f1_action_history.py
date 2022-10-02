@@ -24,8 +24,8 @@ column_names = ['year',
 
 # prepare data
 data = pd.read_csv('./data/action_history/preprocessed/call_chat_summary.20220901-20220902.encoded.csv', dtype='Int64')
-single_data = data.iloc[1, :].drop("reaction").tolist()
-print("single_data", single_data)
+input_data = data.drop("reaction", axis=1).values.tolist()
+labels = data['reaction'].values.tolist()
 
 # load token2id
 with open('./output_pretraining/action_history/vocab_token2id.bin', 'rb') as p:
