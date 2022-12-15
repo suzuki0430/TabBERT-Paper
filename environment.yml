@@ -1,4 +1,4 @@
-name: tabformer-opt
+name: tabformer-opt-sagemaker
 channels:
   - anaconda
   - conda-forge
